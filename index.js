@@ -118,6 +118,43 @@ async function run() {
       res.send(result)
     })
 
+    // admin-stats endpoint
+    app.get('/admin-stats', async (req, res) => {
+      try {
+        const bookings = await bookingCollection.find().toArray();
+
+        // 1. Total Revenue
+        const totalRevenue = bookings.reduce((sum, b) => {
+          const total = Number(b.billing?.calculations?.finalTotal) || 0;
+          return sum + total;
+        }, 0);
+
+        // 2. Today's Bookings (based on bookingDate)
+        const todayStr = new Date().toISOString().split('T')[0];
+        const todayBookings = bookings.filter(b => {
+            const bDate = b.dates?.bookingDate;
+            return bDate && bDate.includes(todayStr);
+        }).length;
+
+        // 3. Pending Bookings (anything not 'Success')
+        const pendingBookings = bookings.filter(b => b.paymentStatus !== 'Success').length;
+
+        // 4. Total Bookings
+        const totalBookings = bookings.length;
+
+        res.json({
+          totalRevenue,
+          todayBookings,
+          pendingBookings,
+          totalBookings
+        });
+      } catch (error) {
+        console.error('Error calculating stats:', error);
+        res.status(500).json({ error: 'Failed to calculate statistics' });
+      }
+    });
+
+
 
 
 
