@@ -53,11 +53,70 @@ async function run() {
     })
     //booking post
     app.post('/bookings', async (req, res) => {
-      const newBooking = req.body
-      const result = await bookingCollection.insertOne(newBooking)
-      console.log(result);
-      res.send(result)
-    })
+      try {
+        const newBooking = req.body;
+        
+        if (newBooking.dates?.checkInDate && newBooking.dates?.checkOutDate) {
+          const newIn = new Date(newBooking.dates.checkInDate);
+          const newOut = new Date(newBooking.dates.checkOutDate);
+          
+          // Reset time to midnight for accurate day comparison
+          newIn.setHours(0, 0, 0, 0);
+          newOut.setHours(0, 0, 0, 0);
+
+          const existingBookings = await bookingCollection.find().toArray();
+          let isOverlapping = false;
+          let isB2B = false;
+
+          for (const booking of existingBookings) {
+            if (!booking.dates?.checkInDate || !booking.dates?.checkOutDate) continue;
+
+            const exIn = new Date(booking.dates.checkInDate);
+            const exOut = new Date(booking.dates.checkOutDate);
+            
+            exIn.setHours(0, 0, 0, 0);
+            exOut.setHours(0, 0, 0, 0);
+
+            // Time overlap logic (strict overlap)
+            const timeOverlaps = (newIn < exOut) && (newOut > exIn);
+            // Back to back logic (check-in matches check-out)
+            const isBackToBack = (newIn.getTime() === exOut.getTime()) || (newOut.getTime() === exIn.getTime());
+
+            const shareRoom = newBooking.roomDetails?.some(newRoom => 
+              booking.roomDetails?.some(exRoom => 
+                newRoom.roomNo === exRoom.roomNo && newRoom.roomType === exRoom.roomType && newRoom.roomNo !== ""
+              )
+            );
+
+            if (shareRoom) {
+              if (timeOverlaps) {
+                isOverlapping = true;
+                break;
+              }
+              if (isBackToBack) {
+                isB2B = true;
+              }
+            }
+          }
+
+          if (isOverlapping) {
+            return res.status(400).send({ error: "Booking overlaps with an existing booking for the selected room(s)." });
+          }
+
+          if (isB2B) {
+            newBooking.isB2B = true;
+            newBooking.b2bText = "B2B";
+          }
+        }
+
+        const result = await bookingCollection.insertOne(newBooking);
+        console.log(result);
+        res.send(result);
+      } catch (error) {
+        console.error("Error creating booking:", error);
+        res.status(500).send({ error: "Failed to create booking" });
+      }
+    });
 
     //booking update
     app.patch("/bookings/:id", async (req, res) => {
@@ -66,13 +125,68 @@ async function run() {
         const updatedBooking = req.body; // incoming updated data 
         const query = { _id: new ObjectId(id) };
 
+        const updateData = {
+          dates: updatedBooking.dates,
+          roomDetails: updatedBooking.roomDetails,
+          customerDetails: updatedBooking.customerDetails,
+          billing: updatedBooking.billing,
+        };
+
+        if (updatedBooking.dates?.checkInDate && updatedBooking.dates?.checkOutDate) {
+          const newIn = new Date(updatedBooking.dates.checkInDate);
+          const newOut = new Date(updatedBooking.dates.checkOutDate);
+          
+          newIn.setHours(0, 0, 0, 0);
+          newOut.setHours(0, 0, 0, 0);
+
+          const existingBookings = await bookingCollection.find({ _id: { $ne: new ObjectId(id) } }).toArray();
+          let isOverlapping = false;
+          let isB2B = false;
+
+          for (const booking of existingBookings) {
+            if (!booking.dates?.checkInDate || !booking.dates?.checkOutDate) continue;
+
+            const exIn = new Date(booking.dates.checkInDate);
+            const exOut = new Date(booking.dates.checkOutDate);
+            
+            exIn.setHours(0, 0, 0, 0);
+            exOut.setHours(0, 0, 0, 0);
+
+            const timeOverlaps = (newIn < exOut) && (newOut > exIn);
+            const isBackToBack = (newIn.getTime() === exOut.getTime()) || (newOut.getTime() === exIn.getTime());
+
+            const shareRoom = updatedBooking.roomDetails?.some(newRoom => 
+              booking.roomDetails?.some(exRoom => 
+                newRoom.roomNo === exRoom.roomNo && newRoom.roomType === exRoom.roomType && newRoom.roomNo !== ""
+              )
+            );
+
+            if (shareRoom) {
+              if (timeOverlaps) {
+                isOverlapping = true;
+                break;
+              }
+              if (isBackToBack) {
+                isB2B = true;
+              }
+            }
+          }
+
+          if (isOverlapping) {
+            return res.status(400).send({ error: "Updated dates overlap with an existing booking for the selected room(s)." });
+          }
+
+          if (isB2B) {
+            updateData.isB2B = true;
+            updateData.b2bText = "B2B";
+          } else {
+            updateData.isB2B = false;
+            updateData.b2bText = "";
+          }
+        }
+
         const update = {
-          $set: {
-            dates: updatedBooking.dates,
-            roomDetails: updatedBooking.roomDetails,
-            customerDetails: updatedBooking.customerDetails,
-            billing: updatedBooking.billing,
-          },
+          $set: updateData,
         };
 
         const result = await bookingCollection.updateOne(query, update);
