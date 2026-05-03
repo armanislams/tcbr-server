@@ -239,7 +239,8 @@ async function run() {
 
         // 1. Total Revenue
         const totalRevenue = bookings.reduce((sum, b) => {
-          const total = Number(b.billing?.calculations?.finalTotal) || 0;
+          // const total = Number(b.billing?.calculations?.finalTotal) || 0;
+          const total = Number(b.billing?.totalAmountInput) || 0;
           return sum + total;
         }, 0);
 
