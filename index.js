@@ -100,7 +100,7 @@ async function run() {
           }
 
           if (isOverlapping) {
-            return res.status(400).send({ error: "Booking overlaps with an existing booking for the selected room(s)." });
+            return res.status(400).send({ error: "Booking overlaps with an existing booking for the selected room(s) and Selected Date." });
           }
 
           if (isB2B) {
