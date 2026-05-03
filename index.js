@@ -287,7 +287,7 @@ run().catch(console.dir);
 ///ending code
 //home port
 app.get("/", (req, res) => {
-  res.send("server running good");
+  res.send("tcbr server running good");
 });
 //listening route
 app.listen(port, () => {
