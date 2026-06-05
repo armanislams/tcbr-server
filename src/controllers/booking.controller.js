@@ -79,6 +79,37 @@ export const createBooking = async (req, res) => {
   try {
     const bookingData = req.body;
 
+    // Generate unique bookingReference: TCBR-YEAR-MONTH-DATE-XXXX
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    const datePrefix = `TCBR-${year}-${month}-${day}`;
+
+    let bookingReference;
+    let isUnique = false;
+    let attempts = 0;
+
+    while (!isUnique && attempts < 10) {
+      const count = await Booking.countDocuments({
+        "dates.bookingReference": { $regex: new RegExp(`^${datePrefix}-`) }
+      });
+      const sequence = String(count + 1 + attempts).padStart(4, "0");
+      bookingReference = `${datePrefix}-${sequence}`;
+
+      const existing = await Booking.findOne({ "dates.bookingReference": bookingReference });
+      if (!existing) {
+        isUnique = true;
+      } else {
+        attempts++;
+      }
+    }
+
+    if (!bookingData.dates) {
+      bookingData.dates = {};
+    }
+    bookingData.dates.bookingReference = bookingReference;
+
     const { isOverlapping, isB2B } = await checkAvailability(
       bookingData.dates,
       bookingData.roomDetails

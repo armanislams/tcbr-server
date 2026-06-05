@@ -26,7 +26,7 @@ const bookingSchema = new mongoose.Schema(
       checkOutDate: { type: String, required: true, index: true },
       bookingDate: { type: String, required: true },
       bookingType: { type: String },
-      bookingReference: { type: String },
+      bookingReference: { type: String, index: true },
       purposeOfVisit: { type: String },
       remarks: { type: String },
     },
