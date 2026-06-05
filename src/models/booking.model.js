@@ -5,6 +5,7 @@ const roomDetailSchema = new mongoose.Schema({
   roomNo: { type: String, required: true, index: true },
   adults: { type: Number, default: 0 },
   children: { type: Number, default: 0 },
+  price: { type: Number, default: 0 },
 }, { _id: false });
 
 const packageDetailSchema = new mongoose.Schema({
