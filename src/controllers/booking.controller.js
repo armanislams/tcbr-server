@@ -162,10 +162,10 @@ export const updateBooking = async (req, res) => {
   }
 };
 
-// Get bookings with search, status filter, and pagination
+// Get bookings with search, status filter, sorting, month filtering, and pagination
 export const getBookings = async (req, res) => {
   try {
-    const { search, status, page = 1, limit = 10 } = req.query;
+    const { search, status, page = 1, limit = 10, sort, month, year, date } = req.query;
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.max(1, parseInt(limit));
     const skip = (pageNum - 1) * limitNum;
@@ -185,9 +185,49 @@ export const getBookings = async (req, res) => {
       query["billing.paymentStatus"] = status;
     }
 
+    // Specific date range filtering (index-friendly, overrides month filter)
+    if (date) {
+      const selectedDate = new Date(date);
+      const startDate = new Date(selectedDate.getTime());
+      startDate.setUTCHours(0, 0, 0, 0);
+
+      const endDate = new Date(selectedDate.getTime());
+      endDate.setUTCHours(23, 59, 59, 999);
+
+      query["dates.checkInDate"] = {
+        $gte: startDate.toISOString(),
+        $lte: endDate.toISOString(),
+      };
+    } else if (month && month !== "All") {
+      const startMonth = parseInt(month);
+      const startYear = parseInt(year || new Date().getFullYear());
+
+      const startDate = new Date(Date.UTC(startYear, startMonth - 1, 1, 0, 0, 0, 0));
+      const endDate = new Date(Date.UTC(startYear, startMonth, 1, 0, 0, 0, 0));
+
+      query["dates.checkInDate"] = {
+        $gte: startDate.toISOString(),
+        $lt: endDate.toISOString(),
+      };
+    }
+
+    // Sorting criteria
+    let sortCriteria = {};
+    if (sort === "checkIn_asc") {
+      sortCriteria = { "dates.checkInDate": 1 };
+    } else if (sort === "checkIn_desc") {
+      sortCriteria = { "dates.checkInDate": -1 };
+    } else if (sort === "booking_asc") {
+      sortCriteria = { "dates.bookingDate": 1 };
+    } else if (sort === "booking_desc") {
+      sortCriteria = { "dates.bookingDate": -1 };
+    } else {
+      sortCriteria = { "dates.checkInDate": -1 }; // default
+    }
+
     const total = await Booking.countDocuments(query);
     const bookings = await Booking.find(query)
-      .sort({ "dates.checkInDate": -1 }) // Sort chronologically (newest check-ins first)
+      .sort(sortCriteria)
       .skip(skip)
       .limit(limitNum);
 
