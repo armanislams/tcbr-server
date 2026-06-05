@@ -45,6 +45,7 @@ const bookingSchema = new mongoose.Schema(
       discount: { type: String },
       commission: { type: String },
       paymentMode: { type: String },
+      paymentRef: { type: String },
       paymentStatus: { type: String, default: "pending", index: true },
       totalAmountInput: { type: String },
       advanceRemarks: { type: String },
