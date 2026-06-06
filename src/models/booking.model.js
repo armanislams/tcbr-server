@@ -20,6 +20,16 @@ const extraChargeSchema = new mongoose.Schema({
   amount: { type: String },
 }, { _id: false });
 
+const modificationSchema = new mongoose.Schema(
+  {
+    modifiedAt: { type: Date, default: Date.now },
+    modifiedBy: { type: String, required: true },
+    action: { type: String, required: true },
+    changes: { type: mongoose.Schema.Types.Mixed },
+  },
+  { _id: false }
+);
+
 const bookingSchema = new mongoose.Schema(
   {
     dates: {
@@ -56,6 +66,7 @@ const bookingSchema = new mongoose.Schema(
     },
     isB2B: { type: Boolean, default: false },
     b2bText: { type: String, default: "" },
+    modificationHistory: [modificationSchema],
   },
   {
     timestamps: true,

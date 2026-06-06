@@ -35,6 +35,7 @@ const checkAvailability = async (dates, roomDetails, excludeBookingId = null) =>
 
   // 1. Check for overlapping bookings using strict overlap logic: (newIn < exOut) && (newOut > exIn)
   const overlapQuery = {
+    "billing.paymentStatus": { $nin: ["Cancelled", "cancelled"] },
     "dates.checkInDate": { $lt: newOutStr },
     "dates.checkOutDate": { $gt: newInStr },
     roomDetails: {
@@ -53,6 +54,7 @@ const checkAvailability = async (dates, roomDetails, excludeBookingId = null) =>
 
   // 2. Check for Back to Back (B2B): check-in matches existing check-out OR check-out matches existing check-in
   const b2bQuery = {
+    "billing.paymentStatus": { $nin: ["Cancelled", "cancelled"] },
     $or: [
       { "dates.checkOutDate": newInStr },
       { "dates.checkInDate": newOutStr },
@@ -148,6 +150,11 @@ export const updateBooking = async (req, res) => {
       return res.status(400).json({ error: "Invalid booking ID" });
     }
 
+    const existingBooking = await Booking.findById(id);
+    if (!existingBooking) {
+      return res.status(404).json({ error: "Booking not found" });
+    }
+
     const { isOverlapping, isB2B } = await checkAvailability(
       updatedData.dates,
       updatedData.roomDetails,
@@ -158,6 +165,48 @@ export const updateBooking = async (req, res) => {
       return res.status(400).json({
         error: "Updated dates overlap with an existing booking for the selected room(s).",
       });
+    }
+
+    // Compare and construct audit changes
+    const changes = {};
+    let isModified = false;
+
+    // 1. Compare dates
+    const oldDates = existingBooking.dates || {};
+    const newDates = updatedData.dates || {};
+    const datesChanged = {};
+    if (oldDates.checkInDate !== newDates.checkInDate) datesChanged.checkInDate = { old: oldDates.checkInDate, new: newDates.checkInDate };
+    if (oldDates.checkOutDate !== newDates.checkOutDate) datesChanged.checkOutDate = { old: oldDates.checkOutDate, new: newDates.checkOutDate };
+    if (oldDates.bookingType !== newDates.bookingType) datesChanged.bookingType = { old: oldDates.bookingType, new: newDates.bookingType };
+    if (oldDates.remarks !== newDates.remarks) datesChanged.remarks = { old: oldDates.remarks, new: newDates.remarks };
+    
+    if (Object.keys(datesChanged).length > 0) {
+      changes.dates = datesChanged;
+      isModified = true;
+    }
+
+    // 2. Compare roomDetails
+    const oldRooms = existingBooking.roomDetails || [];
+    const newRooms = updatedData.roomDetails || [];
+    const oldRoomsClean = oldRooms.map(r => ({ roomType: r.roomType, roomNo: r.roomNo, adults: r.adults, children: r.children, price: r.price }));
+    const newRoomsClean = newRooms.map(r => ({ roomType: r.roomType, roomNo: r.roomNo, adults: r.adults, children: r.children, price: Number(r.price) || 0 }));
+    if (JSON.stringify(oldRoomsClean) !== JSON.stringify(newRoomsClean)) {
+      changes.rooms = { old: oldRoomsClean, new: newRoomsClean };
+      isModified = true;
+    }
+
+    // 3. Compare billing
+    const oldBilling = existingBooking.billing || {};
+    const newBilling = updatedData.billing || {};
+    const billingChanged = {};
+    if (oldBilling.totalAmountInput !== newBilling.totalAmountInput) billingChanged.totalAmountInput = { old: oldBilling.totalAmountInput, new: newBilling.totalAmountInput };
+    if (oldBilling.discount !== newBilling.discount) billingChanged.discount = { old: oldBilling.discount, new: newBilling.discount };
+    if (oldBilling.paymentStatus !== newBilling.paymentStatus) billingChanged.paymentStatus = { old: oldBilling.paymentStatus, new: newBilling.paymentStatus };
+    if (oldBilling.advanceAmountInput !== newBilling.advanceAmountInput) billingChanged.advanceAmountInput = { old: oldBilling.advanceAmountInput, new: newBilling.advanceAmountInput };
+
+    if (Object.keys(billingChanged).length > 0) {
+      changes.billing = billingChanged;
+      isModified = true;
     }
 
     const updatePayload = {
@@ -174,6 +223,18 @@ export const updateBooking = async (req, res) => {
     } else {
       updatePayload.isB2B = false;
       updatePayload.b2bText = "";
+    }
+
+    if (isModified) {
+      const historyEntry = {
+        modifiedAt: new Date(),
+        modifiedBy: req.headers["x-user-email"] || req.headers["x-user-name"] || req.body.modifiedBy || "Admin",
+        action: "Booking details modified",
+        changes: changes
+      };
+      
+      updatePayload.modificationHistory = existingBooking.modificationHistory || [];
+      updatePayload.modificationHistory.push(historyEntry);
     }
 
     const result = await Booking.findByIdAndUpdate(
